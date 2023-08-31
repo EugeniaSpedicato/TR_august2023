@@ -56,6 +56,13 @@ Long64_t nevtot = chain.GetEntries();
   gROOT->SetBatch(kTRUE); 
   //gROOT->SetBatch(kFALSE); 
 
+
+int const n_mod=6;
+int const n_stat=1;
+
+
+
+
 	TRint* app = new TRint("Root Application", &argc, argv);
 
     std::vector<uint16_t>* stub_Bx = new std::vector<uint16_t>;
@@ -116,19 +123,22 @@ Long64_t nevtot = chain.GetEntries();
         TH1F* h_bx0_v=new TH1F("bx0_v","Bx with stub (event->bx()-Bx) modV",30,-15,15);
         TH1F* h_bx1_v=new TH1F("bx1_v","Bx with stub (event->bx()-Bx) modV",30,-15,15);
 
+//double stub1[n_mod]={0.}; double stub2[n_mod]={0.}; double stub3[n_mod]={0.};
+//double stub5[n_mod]=0;
 double stubU1=0; double stubU2=0; double stubU3=0;
 double stubV1=0; double stubV2=0; double stubV3=0;
 double stub4=0;
 int found=0; double found_v=0; double two=0;
 
+//GLOBAL REFERENCE FRAME OFFSET FROM ALIGNMENT
 double Xoffsets[6]={-0.070300968495475138, 0.043476838127823117, 0.081218458321752882, 0.068428399849415442, -0.079017060072807038, -0.051013420927518687};
 double Yoffsets[6]={-0.17741353189702608, 0.0079311725718771414, -0.080868219919505421, 0.068374266162434874, -0.05630130387604667, 0.0046751032833262096};
 
 //double Xoffsets[6]={0.,0.,0.,0.,0.,0.};
 //double Yoffsets[6]={0.,0.,0.,0.,0.,0.};
 
-double tilt[6]={0.233,-0.233,0.,0.,0.233,-0.233};
-double posZ[6]={18.0218, 21.8693, 55.4700-0.2, 56.7305-0.2, 89.9218, 93.7693};
+double tilt[6]={0.233,33,0.,0.,0.233,33};
+double posZ[6]={18.0218, 21.8693, 55.4700, 56.7305, 89.9218, 93.7693};
 
 
 for(Long64_t i = 0; i < 10000; i++) { //chain.GetEntries(); i++) {
@@ -140,19 +150,15 @@ for(Long64_t i = 0; i < 10000; i++) { //chain.GetEntries(); i++) {
         vector<vector<float>> stubs_mod0(40); 
 
 
-// U and V from strip number to cm in local reference frame
-                auto absU_=[&](int mod,int stub,vector<vector<float>> stubs_mod){ double posStripU = stubs_mod.at(mod).at(stub);
-                                      return (- (posStripU - 1016/2.)*0.009 -0.009/2.);};
-                auto absV_=[&](int mod,int stub,vector<vector<float>> stubs_mod){ double posStripV = stubs_mod.at(mod).at(stub);
-                                      return ( + (posStripV - 1016/2.)*0.009 +0.009/2.);};
-// X and Y from strip number to cm in local reference frame
-                auto absX_=[&](int mod,int stub,vector<vector<float>> stubs_mod){ double posStripU = stubs_mod.at(mod).at(stub);
-                                      return (cos(0.233)*(- (posStripU - 1016/2.)*0.009 -0.009/2.));};
-                auto absY_=[&](int mod,int stub,vector<vector<float>> stubs_mod){ double posStripV = stubs_mod.at(mod).at(stub);
-                                      return (cos(-0.233)*( + (posStripV - 1016/2.)*0.009 +0.009/2.));};
-// Z position accounting for tilt
-		auto absZ04_=[&](int mod,auto pos, double off){return - (pos/cos(0.233)+off)*sin(tilt[mod]) + posZ[mod] ;};
-                auto absZ15_=[&](int mod,auto pos, double off){return - (pos/cos(-0.233)+off)*sin(tilt[mod]) + posZ[mod] ;};
+                        auto local_coo=[&](int mod,int stub,std::vector<std::vector<float>> locX_strip_units){
+                                 int a=1;
+                                 if(mod % 2==0) a=-1;
+                                 return ( + (locX_strip_units.at(mod).at(stub) - 1016./2.)*0.009 +0.009/2.);};
+
+// Z position accounting for tilt, NB IF THE X,Y OFFSET IS IN THE GLOBAL REFERENCE, IT IS FINE LIKE THIS
+		auto absXY_=[&](int mod, int stub, auto local, double off){ return cos(tilt[mod])*local+off;};
+
+		auto absZ_=[&](int mod,auto pos_abs){return - ( (pos_abs)/cos(tilt[mod]))*sin(tilt[mod]) + posZ[mod] ;};
 
 // U and V rotation in global XY frame
                 auto newX=[](double angle, auto U, auto V){return cos(angle)*U + sin(angle)*V;};
@@ -163,14 +169,13 @@ for(Long64_t i = 0; i < 10000; i++) { //chain.GetEntries(); i++) {
                 auto newV=[](double angle, auto X, auto Y){return sin(angle)*X + cos(angle)*Y;};
 
 // m and q parameters for XZ and YZ track
-                auto l_mXZ = [&](int stub_mod0, int stub_mod4,vector<vector<float>> stubs_mod){return ((absX_(4,stub_mod4,stubs_mod)+Xoffsets[4])-(absX_(0,stub_mod0,stubs_mod)+Xoffsets[0]))/(absZ04_(4,absX_(4,stub_mod4,stubs_mod),Xoffsets[4])-absZ04_(0,absX_(0,stub_mod0,stubs_mod),Xoffsets[0]));};
-                auto l_mYZ = [&](int stub_mod1, int stub_mod5,vector<vector<float>> stubs_mod){return ((absY_(5,stub_mod5,stubs_mod)+Yoffsets[5])-(absY_(1,stub_mod1,stubs_mod)+Yoffsets[1]))/(absZ15_(5,absY_(5,stub_mod5,stubs_mod),Yoffsets[5])-absZ15_(1,absY_(1,stub_mod1,stubs_mod),Yoffsets[1]));};
-                auto l_qXZ = [&](int stub_mod0, int stub_mod4,vector<vector<float>> stubs_mod){return (absZ04_(4,absX_(4,stub_mod4,stubs_mod),Xoffsets[4])*(absX_(0,stub_mod0,stubs_mod)+Xoffsets[0]) - absZ04_(0,absX_(0,stub_mod0,stubs_mod),Xoffsets[0])*(absX_(4,stub_mod4,stubs_mod)+Xoffsets[4]))/(absZ04_(4,absX_(4,stub_mod4,stubs_mod),Xoffsets[4])-absZ04_(0,absX_(0,stub_mod0,stubs_mod),Xoffsets[0]));};
-                auto l_qYZ = [&](int stub_mod1, int stub_mod5,vector<vector<float>> stubs_mod){return (absZ15_(5,absY_(5,stub_mod5,stubs_mod),Yoffsets[5])*(absY_(1,stub_mod1,stubs_mod)+Yoffsets[1]) - absZ15_(1,absY_(1,stub_mod1,stubs_mod),Yoffsets[1])*(absY_(5,stub_mod5,stubs_mod)+Yoffsets[5]))/(absZ15_(5,absY_(5,stub_mod5,stubs_mod),Yoffsets[5])-absZ15_(1,absY_(1,stub_mod1,stubs_mod),Yoffsets[1]));};
+                auto l_mXZ = [&](int stub_mod0, int stub_mod4,vector<vector<float>> stubs_mod){return ((absXY_(4,stub_mod4,stubs_mod,Xoffsets[4]))-(absXY_(0,stub_mod0,stubs_mod,Xoffsets[0])))/(absZ_(4,absXY_(4,stub_mod4,stubs_mod,Xoffsets[4]))-absZ_(0,absXY_(0,stub_mod0,stubs_mod,Xoffsets[0])));};
+                auto l_mYZ = [&](int stub_mod1, int stub_mod5,vector<vector<float>> stubs_mod){return ((absXY_(5,stub_mod5,stubs_mod,Yoffsets[5]))-(absXY_(1,stub_mod1,stubs_mod,Yoffsets[1])))/(absZ_(5,absXY_(5,stub_mod5,stubs_mod,Yoffsets[5]))-absZ_(1,absXY_(1,stub_mod1,stubs_mod,Yoffsets[1])));};
+                auto l_qXZ = [&](int stub_mod0, int stub_mod4,vector<vector<float>> stubs_mod){return (absZ_(4,absXY_(4,stub_mod4,stubs_mod,Xoffsets[4]))*(absXY_(0,stub_mod0,stubs_mod,Xoffsets[0])) - absZ_(0,absXY_(0,stub_mod0,stubs_mod,Xoffsets[0]))*(absXY_(4,stub_mod4,stubs_mod,Xoffsets[4])))/(absZ_(4,absXY_(4,stub_mod4,stubs_mod,Xoffsets[4]))-absZ_(0,absXY_(0,stub_mod0,stubs_mod,Xoffsets[0])));};
+                auto l_qYZ = [&](int stub_mod1, int stub_mod5,vector<vector<float>> stubs_mod){return (absZ_(5,absXY_(5,stub_mod5,stubs_mod,Yoffsets[5]))*(absXY_(1,stub_mod1,stubs_mod,Yoffsets[1])) - absZ_(1,absXY_(1,stub_mod1,stubs_mod,Yoffsets[1]))*(absXY_(5,stub_mod5,stubs_mod,Yoffsets[5])))/(absZ_(5,absXY_(5,stub_mod5,stubs_mod,Yoffsets[5]))-absZ_(1,absXY_(1,stub_mod1,stubs_mod,Yoffsets[1])));};
 
 // X or Y position on the track at a given Z
                 auto pos_on_track = [](double q, double m, double z){return (q + m*z);};
-
 
 
         for(int i = 0; i<stub_Link->size(); i++)
@@ -180,7 +185,7 @@ for(Long64_t i = 0; i < 10000; i++) { //chain.GetEntries(); i++) {
 	 stubs_mod0.at(link).push_back(stub_LocalX->at(i));
         }
 
-histo_nstubs_BX->Fill(stub_Link->size());
+	histo_nstubs_BX->Fill(stub_Link->size());
 
 
         if(nstubs_per_mod_BX.at(0)==1 and nstubs_per_mod_BX.at(1)==1 and nstubs_per_mod_BX.at(4)==1 and nstubs_per_mod_BX.at(5)==1)
@@ -191,10 +196,10 @@ histo_nstubs_BX->Fill(stub_Link->size());
 	  double qx = l_qXZ(0,0,stubs_mod0);
 	  double qy = l_qYZ(0,0,stubs_mod0);
 
-                 double X_ru = pos_on_track(qx,diffXZ,55.47-0.2);
-                 double X_rv = pos_on_track(qx,diffXZ,56.7305-0.2);
-                 double Y_ru = pos_on_track(qy,diffYZ,55.47-0.2);
-                 double Y_rv = pos_on_track(qy,diffYZ,56.7305-0.2);
+                 double X_ru = pos_on_track(qx,diffXZ,55.47);
+                 double X_rv = pos_on_track(qx,diffXZ,56.7305);
+                 double Y_ru = pos_on_track(qy,diffYZ,55.47);
+                 double Y_rv = pos_on_track(qy,diffYZ,56.7305);
 
 
                  double posU=newU(0.7854,X_ru,Y_ru); // expected U
@@ -231,9 +236,8 @@ chain.GetEntry(i-1);
 double res_U1;
 	  if(nstubs_per_mod_BX1.at(2)>0){
 for(int s=0; s<nstubs_per_mod_BX1.at(2); s++){
-
 //evaluate the position in the local reference frame and then calculate the residual res_U1 with expected position posU
-                 double pos_off_U1=absU_(2,s,stubs_mod1)+newU(0.7854,Xoffsets[2],Yoffsets[2]);
+                 double pos_off_U1=local_coo(2,s,stubs_mod1)+newU(0.7854,Xoffsets[2],Yoffsets[2]);
                  res_U1 = pos_off_U1 - posU;
 
 //If the residual is compatible with the residual's distribution, then the stub is found
@@ -263,7 +267,7 @@ chain.GetEntry(i+1);
 for(int s=0; s<nstubs_per_mod_BX2.at(2); s++){
 
 //evaluate the position in the local reference frame and then calculate the residual res_U1 with expected position posU
-                 double pos_off_U2=absU_(2,s,stubs_mod2)+newU(0.7854,Xoffsets[2],Yoffsets[2]);
+                 double pos_off_U2=local_coo(2,s,stubs_mod2)+newU(0.7854,Xoffsets[2],Yoffsets[2]);
                   res_U2 = pos_off_U2 - posU;
 
 //If the residual is compatible with the residual's distribution, then the stub is found
@@ -291,7 +295,7 @@ else if(nstubs_per_mod_BX.at(2)>0){
 for(int s=0; s<nstubs_per_mod_BX.at(2); s++){
 
 //If the residual is compatible with the residual's distribution, then the stub is found
-                 double pos_off_U3=absU_(2,s,stubs_mod0)+newU(0.785,Xoffsets[2],Yoffsets[2]);
+                 double pos_off_U3=local_coo(2,s,stubs_mod0)+newU(0.785,Xoffsets[2],Yoffsets[2]);
                  double res_U3 = pos_off_U3 - posU;
                  residual_Z->Fill(res_U3);
 
@@ -328,7 +332,7 @@ chain.GetEntry(i-1);
 for(int s=0; s<nstubs_per_mod_BX1_v.at(3); s++){
 
 //If the residual is compatible with the residual's distribution, then the stub is found
-                 double pos_off_V1=absV_(3,s,stubs_mod1_v)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
+                 double pos_off_V1=local_coo(3,s,stubs_mod1_v)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
                  double res_V1 = pos_off_V1 - posV;
                  residual_X_v->Fill(res_V1);
 //If I don't find any stub in any BX, then I look where it is expected to be
@@ -359,7 +363,7 @@ chain.GetEntry(i+1);
 for(int s=0; s<nstubs_per_mod_BX2_v.at(3); s++){
 
 //If the residual is compatible with the residual's distribution, then the stub is found
-                 double pos_off_V2=absV_(3,s,stubs_mod2_v)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
+                 double pos_off_V2=local_coo(3,s,stubs_mod2_v)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
                  double res_V2 = pos_off_V2 - posV;
         residual_Y_v->Fill(res_V2);
 
@@ -387,7 +391,7 @@ nstubs_per_mod_BX2_v.clear();
 for(int s=0; s<nstubs_per_mod_BX.at(3); s++){
 
 //If the residual is compatible with the residual's distribution, then the stub is found
-                 double pos_off_V3=absV_(3,s,stubs_mod0)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
+                 double pos_off_V3=local_coo(3,s,stubs_mod0)+newV(0.7854,Xoffsets[3],Yoffsets[3]);
                  double res_V3 = pos_off_V3 - posV;
                  residual_Z_v->Fill(res_V3);
 
