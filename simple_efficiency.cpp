@@ -52,7 +52,8 @@ int i=0;
       TSystemFile *file;
       TString fname;
       TIter next(files);
-      while ((file=(TSystemFile*)next()) and i<35) { if(i<33){i++; continue;}
+      while ((file=(TSystemFile*)next()) and i<5) { if(i<0){i++; continue;}
+//      while ((file=(TSystemFile*)next()) ) {
          fname = path_s+file->GetName();
 
          if (!file->IsDirectory() && fname.EndsWith(ext)) {
@@ -75,8 +76,8 @@ Long64_t nevtot = chain.GetEntries();
 
 
 //THIS NEED TO BE SET BEFORE STARTING
-int const n_mod=6;
-int const n_stat=1;
+int const n_mod=12;
+int const n_stat=2;
 
         TRint* app = new TRint("Root Application", &argc, argv);
 
@@ -90,7 +91,7 @@ int const n_stat=1;
     std::vector<float>* stub_Z = new std::vector<float>;
         chain.SetBranchAddress("Z", &stub_Z);
         chain.SetBranchAddress("Bend", &stub_Bend);
-        chain.SetBranchAddress("BendCode", &stub_Bend);
+        //chain.SetBranchAddress("BendCode", &stub_Bend);
         chain.SetBranchAddress("Bx", &stub_Bx);
         chain.SetBranchAddress("Link", &stub_Link);
         chain.SetBranchAddress("SuperID", &stub_SuperID);
@@ -137,7 +138,7 @@ int const n_stat=1;
 
 TH1D* h_BX = new TH1D("BX","BX value per event", 20,3550.,3570.);
 
-
+double c_mod=0.;
 
 double stubsix_st0=0;
 double stubsix_st1=0;
@@ -149,16 +150,18 @@ double mod_st0_given_st1[6]={0.};
 double mod_st1_given_st0[6]={0.};
 
 
-for(Long64_t i = 0; i < chain.GetEntries(); i++) {
+for(Long64_t i = 0; i < 300000; i++) {//300000; i++) {//chain.GetEntries(); i++) {
                 chain.GetEntry(i);
                 if(i%1000 == 0) cout<<"Entry "<<i<<endl;
 
 // From strip number to cm in local reference frame
 
+
+
 	              	auto local_coo=[&](int mod,int stub,std::array<std::vector<float>,n_mod> locX_strip_units){
 				 int a=1;
 				 if(mod % 2==0) a=-1;
-				 return ( + (locX_strip_units.at(mod).at(stub) - 1016./2.)*0.009 +0.009/2.);};
+				 return a*( + (locX_strip_units.at(mod).at(stub) - 1016./2.)*0.009 +0.009/2.);};
 
 
 // X and Y rotation in local UV frame
@@ -177,8 +180,6 @@ int found_st1[6]={0};
         int n_stubs_tot=stub_Link->size();
 	std::array<int,n_stat> n_stubs;
 
-h_BX->Fill(stub_Bx->at(0));
-
 
 	for(int s=0;s<n_stat;s++){n_stubs.at(s)=0.;}
 
@@ -186,16 +187,20 @@ h_BX->Fill(stub_Bx->at(0));
 
 	if(stub_Link->size()==1) histo_1stub->Fill(stub_Link->at(0));
 
-cout << "stub at module : " << endl;
+cout << "stub at module : " << stub_Link->size() << endl;
+
         for(int j = 0; j<stub_Link->size(); j++)
         {
+		cout << "link " << stub_Link->at(j) << " ,";
 		int link= stub_Link->at(j);
-		cout << "link, " << stub_Link->at(j);
+
          localX.at(link).push_back(stub_LocalX->at(j));
+
          if(link<6){nstubs_per_mod_BX_st0.at(link)+=1;
 		    module_st0.push_back(link);
 		    n_stubs.at(0)+=1;}
-	 else{nstubs_per_mod_BX_st1.at(link)+=1;
+	 else{nstubs_per_mod_BX_st1.at(link-6)+=1;
+		cout << " link-6 " << link-6 << endl;
 	      module_st1.push_back(link);
 	      n_stubs.at(1)+=1;}
         }
@@ -206,7 +211,7 @@ cout << "stub at module : " << endl;
 
 int six_st0=0;
 
-   	for(int m=0; m<n_mod; m++){
+   	for(int m=0; m<n_mod/n_stat; m++){
 	cout << "station 0, module " << m << "  n_stub: " << nstubs_per_mod_BX_st0.at(m) << " " << endl;
 		if(nstubs_per_mod_BX_st0.at(m)==1) h_hist[m]->Fill(local_coo(m,0,localX));
 	}
@@ -217,7 +222,7 @@ int six_st0=0;
         sort(module_st0.begin(), module_st0.end());
 if(adjacent_find(module_st0.begin(), module_st0.end())==module_st0.end())
  {
-     for(int m=0; m<6; m++){
+     for(int m=0; m<n_mod/n_stat; m++){
 	nstubs_per_mod_BX_st0.at(m)==1? found_st0[m]=1 : found_st0[m]=0;
 	cout << "module " << m << ", found_st0 = " << found_st0[m] << endl;
      }
@@ -231,27 +236,27 @@ int found=0;
 chain.GetEntry(i-1);
         vector<int> nstubs_per_mod_BX1(6,0);
         vector<vector<float>> stubs_mod1(40);
-
+        double ns1=0.;
         for(int i = 0; i<stub_Link->size(); i++)
         {
          int link= stub_Link->at(i);
-         nstubs_per_mod_BX1.at(link)+=1;
-         stubs_mod1.at(link).push_back(stub_LocalX->at(i));
+         if(link<6){ns1++; nstubs_per_mod_BX1.at(link)+=1;
+	            stubs_mod1.at(link).push_back(stub_LocalX->at(i));}
         }
-if(nstubs_per_mod_BX1.at(pos)==1 and stub_Link->size()==1){
+if(nstubs_per_mod_BX1.at(pos)==1 and ns1==1){
 h_bx_prec[pos]->Fill(stub_Bx->at(0)-Bx);
 	}
 chain.GetEntry(i+1);
         vector<int> nstubs_per_mod_BX2(6,0);
         vector<vector<float>> stubs_mod2(40);
-
+	double ns2=0.;
         for(int i = 0; i<stub_Link->size(); i++)
         {
          int link= stub_Link->at(i);
-         nstubs_per_mod_BX2.at(link)+=1;
-         stubs_mod2.at(link).push_back(stub_LocalX->at(i));
+         if(link<6){ns2++; nstubs_per_mod_BX2.at(link)+=1;
+         stubs_mod2.at(link).push_back(stub_LocalX->at(i));}
         }
-if(nstubs_per_mod_BX2.at(pos)==1 and stub_Link->size()==1){
+if(nstubs_per_mod_BX2.at(pos)==1 and ns2==1){
 h_bx_next[pos]->Fill(stub_Bx->at(0)-Bx);
         }
 chain.GetEntry(i);
@@ -277,9 +282,9 @@ else if(n_stubs.at(0)==6){stubsix_st0++; six_st0=1;}
 
 int six_st1=0;
 
-   	for(int m=0; m<n_mod; m++){
-        cout << "station 1, module " << m << "  n_stub: " << nstubs_per_mod_BX_st1.at(m-6) << endl;
-                if(nstubs_per_mod_BX_st1.at(m-6)==1) h_hist[m]->Fill(local_coo(m,0,localX));
+   	for(int m=0; m<n_mod/n_stat; m++){
+        cout << "station 1, module " << m << "  n_stub: " << nstubs_per_mod_BX_st1.at(m) << endl;
+                //if(nstubs_per_mod_BX_st1.at(m)==1) h_hist[m+6]->Fill(local_coo(m+6,0,localX));
         }
 
 //efficiency station 1
@@ -303,28 +308,28 @@ if(n_stubs.at(1)==5){auto it=find(begin(found_st1), end(found_st1),0);
 chain.GetEntry(i-1);
         vector<int> nstubs_per_mod_BX1(6,0);
         vector<vector<float>> stubs_mod1(40);
-
+        double ns1=0.;
          for(int i = 0; i<stub_Link->size(); i++)
          {
           int link= stub_Link->at(i);
-          nstubs_per_mod_BX1.at(link)+=1;
-          stubs_mod1.at(link).push_back(stub_LocalX->at(i));
+         if(link>5){ns1++; nstubs_per_mod_BX1.at(link-6)+=1;
+          stubs_mod1.at(link-6).push_back(stub_LocalX->at(i));}
          }
-	if(nstubs_per_mod_BX1.at(pos)==1 and stub_Link->size()==1){
-	h_bx_prec[pos]->Fill(stub_Bx->at(0)-Bx);
+	if(nstubs_per_mod_BX1.at(pos)==1 and ns1==1){
+	h_bx_prec[pos+6]->Fill(stub_Bx->at(0)-Bx);
         }
 chain.GetEntry(i+1);
         vector<int> nstubs_per_mod_BX2(6,0);
         vector<vector<float>> stubs_mod2(40);
-
+	double ns2=0.;
          for(int i = 0; i<stub_Link->size(); i++)
          {
           int link= stub_Link->at(i);
-          nstubs_per_mod_BX2.at(link)+=1;
-          stubs_mod2.at(link).push_back(stub_LocalX->at(i));
+          if(link>5){ns2++; nstubs_per_mod_BX2.at(link-6)+=1;
+          stubs_mod2.at(link-6).push_back(stub_LocalX->at(i));}
          }
-	if(nstubs_per_mod_BX2.at(pos)==1 and stub_Link->size()==1){
-	h_bx_next[pos]->Fill(stub_Bx->at(0)-Bx);
+	if(nstubs_per_mod_BX2.at(pos)==1 and ns2==1){
+	h_bx_next[pos+6]->Fill(stub_Bx->at(0)-Bx);
         }
 chain.GetEntry(i);
  }
@@ -365,7 +370,7 @@ if(six_st1==1){
 
 }
 
-
+if(n_stubs.at(0)>=4 and n_stubs.at(1)>=4) c_mod++;
 
 
 
@@ -385,6 +390,9 @@ for(int l=0; l<localX.size();l++) localX.at(l).clear();
                 for(int m=0; m<6; m++){cout << "Given 6 stubs in station 0, efficiency module " << m << " of station 1 is " << (mod_st1_given_st0[m]/stubsix_st0) << endl;}
                 for(int m=0; m<6; m++){cout << "Given 6 stubs in station 1, efficiency module " << m << " of station 0 is " << (mod_st0_given_st1[m]/stubsix_st1) << endl;}
 	}
+
+cout << "risp st0 " << c_mod/stubsix_st0 <<endl;
+cout << "risp st1 " << c_mod/stubsix_st1 <<endl;
 
 
 TCanvas n ("canvas_stubs_BX","stubs per BX", 700, 500);
@@ -414,8 +422,14 @@ n4.Divide(2,n_mod/2);
 for(int m=0; m<n_mod; m++){
 n4.cd(m+1);
 h_bx_prec[m]->SetLineColor(kRed);
+if(h_bx_next[m]->GetEntries()>h_bx_prec[m]->GetEntries()){
 h_bx_next[m]->Draw();
 h_bx_prec[m]->Draw("same");}
+else{
+h_bx_prec[m]->Draw();
+h_bx_next[m]->Draw("same");
+ }
+}
 n4.SaveAs("deltaBX.pdf");
 
 TCanvas n5("n5","n5",1000,1000);
